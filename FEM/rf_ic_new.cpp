@@ -548,6 +548,14 @@ void CInitialCondition::SetByNodeIndex(int nidx)
 	std::stringstream in;
 	long node_index;
 	double node_val;
+	int method, id;
+	int element_id;
+	double calculated_element_id;
+	double x,y,z,dx,dy,dz;
+	double node_x,node_y,node_z;
+	double value;
+	vector<double> data; 
+	double x_min, y_min,z_min, x_cell, y_cell, z_cell, nx, ny, nz; 
 
 	// File handling
 	ifstream d_file (fname.c_str(),ios::in);
@@ -561,15 +569,119 @@ void CInitialCondition::SetByNodeIndex(int nidx)
 	while (!d_file.eof())
 	{
 		line_string = GetLineFromFile1(&d_file);
+
 		if(line_string.find("#STOP") != string::npos)
 			break;
+		
+		if(line_string.find("$DATA_TYPE") != string::npos)
+		{
+			line_string = GetLineFromFile1(&d_file);
+			in.str(line_string);
+			in >> method;
+			in.clear();
+		}
 
-		in.str(line_string);
-		in >> node_index >> node_val;
-		in.clear();
+		if(line_string.find("$GEO_REFERENCE") != string::npos)
+		{
+			line_string = GetLineFromFile1(&d_file);
+			in.str(line_string);
+			in >> x >> y >> z >> dx >> dy >> dz >> nx >> ny >> nz;
+			in.clear();
+		}
 
-		this->getProcess()->SetNodeValue(node_index,nidx,node_val);
+		switch(method)
+		{
+		case 0: // just a list: id & value
+			in.str(line_string);
+			in >> node_index >> node_val;
+			in.clear();
+			this->getProcess()->SetNodeValue(node_index,nidx,node_val);
+			break;
+		case 1: // Regular Raster Data (2D)
+			if(line_string.find("$DATA") != string::npos)
+			{
+				line_string = GetLineFromFile1(&d_file);
+				in.str(line_string);
+				in >> id >> value;
+				data.push_back(value);
+				in.clear();
+			}
+			else
+			{
+				if (data.size()>0)
+				{
+				in.str(line_string);
+				in >> id >> value;
+				data.push_back(value);
+				in.clear();
+				}
+			}
+			break;
+		default: // just a list: id & value
+			in.str(line_string);
+			in >> node_index >> node_val;
+			in.clear();
+			this->getProcess()->SetNodeValue(node_index,nidx,node_val);
+			break;
+		}
+
 	}
+
+
+		switch(method)
+		{
+		case 0:
+			break;
+		case 1: // Regular Raster Data (2D)
+		    for(int i=0; i<(int)this->m_msh->nod_vector.size();i++)
+			{
+				node_x = this->m_msh->nod_vector[i]->X();
+				node_y = this->m_msh->nod_vector[i]->Y();
+				node_z = this->m_msh->nod_vector[i]->Z();
+				
+				//cell distribution 
+				x_min = x ;
+				y_min = y ;
+				z_min = z ;
+				//x_max = x + nx * dx;
+				//y_max = y + ny * dy;
+				//z_max = z + nz * dz;
+				
+				// 2D cases 
+				if (dx>0.0 && dz>0.0 && dy<=0.0)
+				{
+					x_cell = floor((node_x - x_min) / dx); 
+			   		z_cell = floor((node_z - z_min) / dz);
+				}
+				if (dx>0.0 && dy>0.0 && dz<=0.0)
+				{
+					x_cell = floor((node_x - x_min) / dx); 
+					y_cell = floor((node_y - y_min) / dy);
+				}
+				if (dy>0.0 && dz>0.0 && dx<=0.0)
+				{
+					y_cell = floor((node_y - y_min) / dy);
+			   		z_cell = floor((node_z - z_min) / dz);
+				}
+				
+				
+				// assign the value 
+				if (dx>0.0 && dz>0.0 && dy<=0.0)
+				{
+				calculated_element_id = (nx * z_cell) + (x_cell);
+				element_id = floor(calculated_element_id);
+				}
+				node_val = data[element_id];
+
+
+				this->getProcess()->SetNodeValue(i,nidx,node_val);
+			}
+			break;
+		default:
+			break;
+		}
+
+
 }
 
 /**************************************************************************
